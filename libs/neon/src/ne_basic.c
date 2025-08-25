@@ -458,7 +458,11 @@ static int copy_or_move(ne_session *sess, int is_move, int overwrite,
 
 #ifdef NE_HAVE_DAV
     if (is_move) {
-	ne_lock_using_resource(req, src, NE_DEPTH_INFINITE);
+        /* Moving the resource requires any locks for the source
+         * resource (which may be a collection), and modifies the
+         * parent of the source. */
+        ne_lock_using_resource(req, src, NE_DEPTH_INFINITE);
+        ne_lock_using_parent(req, src);
     }
     ne_lock_using_resource(req, dest, NE_DEPTH_INFINITE);
     /* And we need to be able to add members to the destination's parent */
@@ -524,6 +528,10 @@ int ne_mkcol(ne_session *sess, const char *path)
     ne_lock_using_parent(req, real_path);
 #endif
     
+    #ifdef WINSCP
+    // New OneDrive interface returns empty text/xml 207 MULTI-STATUS response, ignore it
+    ne_set_request_flag(req, NE_REQFLAG_IGNOREEMPTYXML, 1);
+    #endif
     ret = ne_simple_request(sess, req);
 
     ne_free(real_path);

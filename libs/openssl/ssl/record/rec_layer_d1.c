@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2005-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -25,9 +25,9 @@ int DTLS_RECORD_LAYER_new(RECORD_LAYER *rl)
 
     rl->d = d;
 
-    d->buffered_app_data.q = pqueue_new();
+    d->buffered_app_data = pqueue_new();
 
-    if (d->buffered_app_data.q == NULL) {
+    if (d->buffered_app_data == NULL) {
         OPENSSL_free(d);
         rl->d = NULL;
         return 0;
@@ -42,7 +42,7 @@ void DTLS_RECORD_LAYER_free(RECORD_LAYER *rl)
         return;
 
     DTLS_RECORD_LAYER_clear(rl);
-    pqueue_free(rl->d->buffered_app_data.q);
+    pqueue_free(rl->d->buffered_app_data);
     OPENSSL_free(rl->d);
     rl->d = NULL;
 }
@@ -56,7 +56,7 @@ void DTLS_RECORD_LAYER_clear(RECORD_LAYER *rl)
 
     d = rl->d;
 
-    while ((item = pqueue_pop(d->buffered_app_data.q)) != NULL) {
+    while ((item = pqueue_pop(d->buffered_app_data)) != NULL) {
         rec = (TLS_RECORD *)item->data;
 
         if (rl->s->options & SSL_OP_CLEANSE_PLAINTEXT)
@@ -66,19 +66,19 @@ void DTLS_RECORD_LAYER_clear(RECORD_LAYER *rl)
         pitem_free(item);
     }
 
-    buffered_app_data = d->buffered_app_data.q;
+    buffered_app_data = d->buffered_app_data;
     memset(d, 0, sizeof(*d));
-    d->buffered_app_data.q = buffered_app_data;
+    d->buffered_app_data = buffered_app_data;
 }
 
 static int dtls_buffer_record(SSL_CONNECTION *s, TLS_RECORD *rec)
 {
     TLS_RECORD *rdata;
     pitem *item;
-    record_pqueue *queue = &(s->rlayer.d->buffered_app_data);
+    struct pqueue_st *queue = s->rlayer.d->buffered_app_data;
 
     /* Limit the size of the queue to prevent DOS attacks */
-    if (pqueue_size(queue->q) >= 100)
+    if (pqueue_size(queue) >= 100)
         return 0;
 
     /* We don't buffer partially read records */
@@ -125,7 +125,7 @@ static int dtls_buffer_record(SSL_CONNECTION *s, TLS_RECORD *rec)
     }
 #endif
 
-    if (pqueue_insert(queue->q, item) == NULL) {
+    if (pqueue_insert(queue, item) == NULL) {
         /* Must be a duplicate so ignore it */
         OPENSSL_free(rdata->allocdata);
         OPENSSL_free(rdata);
@@ -145,7 +145,7 @@ static void dtls_unbuffer_record(SSL_CONNECTION *s)
     if (s->rlayer.curr_rec < s->rlayer.num_recs)
         return;
 
-    item = pqueue_pop(s->rlayer.d->buffered_app_data.q);
+    item = pqueue_pop(s->rlayer.d->buffered_app_data);
     if (item != NULL) {
         rdata = (TLS_RECORD *)item->data;
 
@@ -435,6 +435,17 @@ int dtls1_read_bytes(SSL *s, uint8_t type, uint8_t *recvd_type,
 #endif
                 sc->shutdown |= SSL_RECEIVED_SHUTDOWN;
                 return 0;
+            } else if (alert_descr == SSL_AD_NO_RENEGOTIATION) {
+                /*
+                 * This is a warning but we receive it if we requested
+                 * renegotiation and the peer denied it. Terminate with a fatal
+                 * alert because if the application tried to renegotiate it
+                 * presumably had a good reason and expects it to succeed. In
+                 * the future we might have a renegotiation where we don't care
+                 * if the peer refused it where we carry on.
+                 */
+                SSLfatal(sc, SSL_AD_HANDSHAKE_FAILURE, SSL_R_NO_RENEGOTIATION);
+                return -1;
             }
         } else if (alert_level == SSL3_AL_FATAL) {
             sc->rwstate = SSL_NOTHING;
@@ -678,4 +689,15 @@ void dtls1_increment_epoch(SSL_CONNECTION *s, int rw)
     } else {
         s->rlayer.d->w_epoch++;
     }
+}
+
+uint16_t dtls1_get_epoch(SSL_CONNECTION *s, int rw) {
+    uint16_t epoch;
+
+    if (rw & SSL3_CC_READ)
+        epoch = s->rlayer.d->r_epoch;
+    else
+        epoch = s->rlayer.d->w_epoch;
+
+    return epoch;
 }

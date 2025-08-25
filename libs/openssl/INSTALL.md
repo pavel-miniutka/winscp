@@ -64,6 +64,7 @@ issues and other details, please read one of these:
  * [Notes for Windows platforms](NOTES-WINDOWS.md)
  * [Notes for the DOS platform with DJGPP](NOTES-DJGPP.md)
  * [Notes for the OpenVMS platform](NOTES-VMS.md)
+ * [Notes for the HPE NonStop platform](NOTES-NONSTOP.md)
  * [Notes on Perl](NOTES-PERL.md)
  * [Notes on Valgrind](NOTES-VALGRIND.md)
 
@@ -141,7 +142,7 @@ Use the following commands to configure, build and test OpenSSL.
 The testing is optional, but recommended if you intend to install
 OpenSSL for production use.
 
-### Unix / Linux / macOS
+### Unix / Linux / macOS / NonStop
 
     $ ./Configure
     $ make
@@ -198,7 +199,7 @@ the global search path for system libraries.
 Finally, if you plan on using the FIPS module, you need to read the
 [Post-installation Notes](#post-installation-notes) further down.
 
-### Unix / Linux / macOS
+### Unix / Linux / macOS / NonStop
 
 Depending on your distribution, you need to run the following command as
 root user or prepend `sudo` to the command:
@@ -606,6 +607,7 @@ Do not use `atexit()` in libcrypto builds.
 
 `atexit()` has varied semantics between platforms and can cause SIGSEGV in some
 circumstances. This option disables the atexit registration of OPENSSL_cleanup.
+By default, NonStop configurations use `no-atexit`.
 
 ### no-autoalginit
 
@@ -1082,6 +1084,14 @@ when needed.
 
 This is only supported on systems where loading of shared libraries is supported.
 
+### enable-unstable-qlog
+
+Enables qlog output support for the QUIC protocol. This functionality is
+unstable and implements a draft version of the qlog specification. The qlog
+output from OpenSSL will change in incompatible ways in future, and is not
+subject to any format stability or compatibility guarantees at this time. See
+the manpage openssl-qlog(7) for details.
+
 ### 386
 
 In 32-bit x86 builds, use the 80386 instruction set only in assembly modules
@@ -1281,7 +1291,7 @@ Configure OpenSSL
 ### Automatic Configuration
 
 In previous version, the `config` script determined the platform type and
-compiler and then called `Configure`. Starting with this release, they are
+compiler and then called `Configure`. Starting with version 3.0, they are
 the same.
 
 #### Unix / Linux / macOS
@@ -1736,7 +1746,7 @@ More about our support resources can be found in the [SUPPORT] file.
 
 ### Configuration Errors
 
-If the `./Configure` or `./Configure` command fails with an error message,
+If the `./config` or `./Configure` command fails with an error message,
 read the error message carefully and try to figure out whether you made
 a mistake (e.g., by providing a wrong option), or whether the script is
 working incorrectly. If you think you encountered a bug, please

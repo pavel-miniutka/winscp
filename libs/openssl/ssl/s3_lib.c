@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2025 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -4287,15 +4287,15 @@ const SSL_CIPHER *ssl3_choose_cipher(SSL_CONNECTION *s, STACK_OF(SSL_CIPHER) *cl
     }
 
     for (i = 0; i < sk_SSL_CIPHER_num(prio); i++) {
+        int minversion, maxversion;
+
         c = sk_SSL_CIPHER_value(prio, i);
+        minversion = SSL_CONNECTION_IS_DTLS(s) ? c->min_dtls : c->min_tls;
+        maxversion = SSL_CONNECTION_IS_DTLS(s) ? c->max_dtls : c->max_tls;
 
         /* Skip ciphers not supported by the protocol version */
-        if (!SSL_CONNECTION_IS_DTLS(s) &&
-            ((s->version < c->min_tls) || (s->version > c->max_tls)))
-            continue;
-        if (SSL_CONNECTION_IS_DTLS(s) &&
-            (DTLS_VERSION_LT(s->version, c->min_dtls) ||
-             DTLS_VERSION_GT(s->version, c->max_dtls)))
+        if (ssl_version_cmp(s, s->version, minversion) < 0
+            || ssl_version_cmp(s, s->version, maxversion) > 0)
             continue;
 
         /*
@@ -4898,7 +4898,10 @@ int ssl_derive(SSL_CONNECTION *s, EVP_PKEY *privkey, EVP_PKEY *pubkey, int gense
     }
 
     if (EVP_PKEY_derive(pctx, pms, &pmslen) <= 0) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        /*
+         * the public key was probably a weak key
+         */
+        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
         goto err;
     }
 
@@ -5003,7 +5006,7 @@ int ssl_encapsulate(SSL_CONNECTION *s, EVP_PKEY *pubkey,
     }
 
     if (EVP_PKEY_encapsulate(pctx, ct, &ctlen, pms, &pmslen) <= 0) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
         goto err;
     }
 

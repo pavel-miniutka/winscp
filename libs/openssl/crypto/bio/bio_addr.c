@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -104,6 +104,7 @@ void BIO_ADDR_clear(BIO_ADDR *ap)
  */
 int BIO_ADDR_make(BIO_ADDR *ap, const struct sockaddr *sa)
 {
+    memset(ap, 0, sizeof(BIO_ADDR));
     if (sa->sa_family == AF_INET) {
         memcpy(&(ap->s_in), sa, sizeof(struct sockaddr_in));
         return 1;
@@ -571,8 +572,13 @@ int BIO_parse_hostserv(const char *hostserv, char **host, char **service,
             *service = NULL;
         } else {
             *service = OPENSSL_strndup(p, pl);
-            if (*service == NULL)
+            if (*service == NULL) {
+                if (h != NULL && host != NULL) {
+                    OPENSSL_free(*host);
+                    *host = NULL;
+                }
                 return 0;
+            }
         }
     }
 
@@ -799,14 +805,12 @@ int BIO_lookup_ex(const char *host, const char *service, int lookup_type,
         if (!RUN_ONCE(&bio_lookup_init, do_bio_lookup_init)) {
             /* Should this be raised inside do_bio_lookup_init()? */
             ERR_raise(ERR_LIB_BIO, ERR_R_CRYPTO_LIB);
-            ret = 0;
-            goto err;
+            return 0;
         }
 
-        if (!CRYPTO_THREAD_write_lock(bio_lookup_lock)) {
-            ret = 0;
-            goto err;
-        }
+        if (!CRYPTO_THREAD_write_lock(bio_lookup_lock))
+            return 0;
+        
         he_fallback_address = INADDR_ANY;
         if (host == NULL) {
             he = &he_fallback;
